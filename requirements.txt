@@ -2,3 +2,4 @@ pandas
 PyPDF2
 requests
 bs4
+openpyxl
