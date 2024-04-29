@@ -1,11 +1,13 @@
 import logging
 from multiprocessing import Pool, Manager
 import os
+from io import BytesIO
 
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import PyPDF2
+
 
 
 # Set up the logger
@@ -61,6 +63,11 @@ def scrape_related_links(url, sourceResponse):
     links = soup.find_all('a')
     for link in links:
         href = link.get('href')
+        if href and href.endswith('.pdf'):
+            response = requests.get(href)
+            logger.info('Scraping the PDF: ' + href)
+            pdf_file = BytesIO(response.content)
+            scrape_pdf(pdf_file, url, href)
         if href and is_same_domain(href, domain):
             try:
                 response = requests.get(href)
@@ -68,8 +75,6 @@ def scrape_related_links(url, sourceResponse):
                 logger.error('There was an error while scraping the following link: ' + href)
                 shared_list.append((url, 'No', 'Errore', href))
                 return e
-            if response.headers['Content-Type'] == 'application/pdf':
-                scrape_pdf(response.content, url, href)
             else:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 body = soup.find('body').get_text()
@@ -85,20 +90,24 @@ def scrape_related_links(url, sourceResponse):
     print('List length:', len(shared_list))
     return False
 
-
 # If the link is a PDF, scrape the text from the PDF
 def scrape_pdf(pdf, homepage_url, url):
-    pdf = PyPDF2.PdfFileReader(pdf)
-    text = ''
-    for page in pdf.pages:
-        text += page.extract_text()
-    if 'blockchain' in text:
-        logger.info('The word "blockchain" was found in the related link:' + url)
-        shared_list.append((homepage_url, 'No', 'Sì', url))
-        return
-    else:
-        logger.info('The word "blockchain" was not found in the related link:' + url)
-        return
+    try:
+        pdf = PyPDF2.PdfReader(pdf)
+        text = ''
+        for page in pdf.pages:
+            text += page.extract_text()
+        if 'blockchain' in text:
+            logger.info('The word "blockchain" was found in the related PDF:' + url)
+            shared_list.append((homepage_url, 'No', 'Sì', url))
+            return
+        else:
+            logger.info('The word "blockchain" was not found in the related PDF:' + url)
+            return
+    except Exception as e:
+        logger.error('There was an error while parsing the PDF: ' + url + '. Error: ' + str(e))
+        shared_list.append((homepage_url, 'No', 'Errore', url))
+        return e
 
 
 
