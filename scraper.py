@@ -39,6 +39,10 @@ def scrape_url(url):
         logger.error('There was an error while scraping the following link: ' + url)
         shared_list.append((url, 'Errore', '-', '-'))
         return e
+    except Exception as e:
+        logger.error('There was an error while scraping the following link: ' + url)
+        shared_list.append((url, 'Errore', '-', '-'))
+        return e
     soup = BeautifulSoup(response.text, 'html.parser')
     try:
         body = soup.find('body').get_text()
@@ -50,7 +54,7 @@ def scrape_url(url):
         logger.error('There was an error while scraping the following link: ' + url)
         shared_list.append((url, 'Errore', '-', '-'))
         return
-    if 'blockchain' in body:
+    if 'blockchain' in body or 'Blockchain' in body:
         logger.info('The word "blockchain" was found in the homepage:' + url)
         shared_list.append((url, 'Sì', '-', '-'))
         return True
@@ -81,6 +85,10 @@ def scrape_related_links(url, sourceResponse):
                 logger.error('There was an error while scraping the following PDF: ' + href)
                 shared_list.append((url, 'No', 'Errore', href))
                 return e
+            except Exception as e:
+                logger.error('There was an error while scraping the following PDF: ' + url)
+                shared_list.append((url, 'Errore', '-', '-'))
+                return e
             logger.info('Scraping the PDF: ' + href)
             pdf_file = BytesIO(response.content)
             scrape_pdf(pdf_file, url, href)
@@ -99,6 +107,10 @@ def scrape_related_links(url, sourceResponse):
                 logger.error('There was an error while scraping the following link: ' + href)
                 shared_list.append((url, 'No', 'Errore', href))
                 return e
+            except Exception as e:
+                logger.error('There was an error while scraping the following link: ' + url)
+                shared_list.append((url, 'Errore', '-', '-'))
+                return e
             else:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 try:
@@ -111,7 +123,7 @@ def scrape_related_links(url, sourceResponse):
                     logger.error('There was an error while scraping the following link: ' + url)
                     shared_list.append((url, 'Errore', '-', '-'))
                     return
-                if 'blockchain' in body:
+                if 'blockchain' in body or 'Blockchain' in body:
                     logger.info('The word "blockchain" was found in the related link:' + href)
                     shared_list.append((url, 'No', 'Sì', href))
                     return True
@@ -129,7 +141,7 @@ def scrape_pdf(pdf, homepage_url, url):
         text = ''
         for page in pdf.pages:
             text += page.extract_text()
-        if 'blockchain' in text:
+        if 'blockchain' in text or 'Blockchain' in text:
             logger.info('The word "blockchain" was found in the related PDF:' + url)
             shared_list.append((homepage_url, 'No', 'Sì', url))
             return
