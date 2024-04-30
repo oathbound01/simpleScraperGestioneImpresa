@@ -66,6 +66,8 @@ def scrape_url(url):
 def scrape_related_links(url, sourceResponse):
     soup = BeautifulSoup(sourceResponse.text, 'html.parser')
     domain = urlparse(url).netloc
+    if domain.startswith('www.'):
+        domain = domain.replace('www.', '')
     logger.info('Scraping related links of the same domain: ' + domain)
     links = soup.find_all('a')
     for link in links:
