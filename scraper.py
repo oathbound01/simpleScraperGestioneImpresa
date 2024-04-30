@@ -1,5 +1,6 @@
 import logging
-from multiprocessing import Pool, Manager
+from multiprocessing import Manager
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, TimeoutError
 import os
 from io import BytesIO
 
@@ -8,23 +9,6 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import PyPDF2
 
-
-
-# Set up the logger
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-handler = logging.FileHandler('azioni.log')
-handler.setLevel(logging.INFO)
-
-formatter = logging.Formatter('PID: %(process)d - %(asctime)s - %(message)s')
-handler.setFormatter(formatter)
-
-logger.addHandler(handler)
-
-# Read the excel file
-data = pd.read_excel('input.xlsx')
-logger.info('The input file was read successfully.')
 
 # Check the homepage for URLs that are of the same domain
 def is_same_domain(url, domain):
@@ -36,7 +20,11 @@ def is_same_domain(url, domain):
 # Function to scrape the given URL for the word "blockchain"
 def scrape_url(url):
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
+    except requests.exceptions.Timeout as e:
+        logger.error('The request timed out for the following link: ' + url)
+        shared_list.append((url, 'Error', '-', '-'))
+        return e
     except requests.exceptions.RequestException as e:
         logger.error('There was an error while scraping the following link: ' + url)
         shared_list.append((url, 'Errore', '-', '-'))
@@ -64,13 +52,26 @@ def scrape_related_links(url, sourceResponse):
     for link in links:
         href = link.get('href')
         if href and href.endswith('.pdf'):
-            response = requests.get(href)
+            try:
+                response = requests.get(href)
+            except requests.exceptions.Timeout as e:
+                logger.error('The request timed out for the following link: ' + href)
+                shared_list.append((url, 'No', 'Errore', href))
+                return e
+            except requests.exceptions.RequestException as e:
+                logger.error('There was an error while scraping the following link: ' + href)
+                shared_list.append((url, 'No', 'Errore', href))
+                return e
             logger.info('Scraping the PDF: ' + href)
             pdf_file = BytesIO(response.content)
             scrape_pdf(pdf_file, url, href)
         if href and is_same_domain(href, domain):
             try:
                 response = requests.get(href)
+            except requests.exceptions.Timeout as e:
+                logger.error('The request timed out for the following link: ' + href)
+                shared_list.append((url, 'No', 'Errore', href))
+                return e
             except requests.exceptions.RequestException as e:
                 logger.error('There was an error while scraping the following link: ' + href)
                 shared_list.append((url, 'No', 'Errore', href))
@@ -87,7 +88,6 @@ def scrape_related_links(url, sourceResponse):
                     continue
     logger.info('The word "blockchain" was not found in any related links.')
     shared_list.append((url, 'No', 'No', '-'))
-    print('List length:', len(shared_list))
     return False
 
 # If the link is a PDF, scrape the text from the PDF
@@ -118,20 +118,51 @@ def process_row(args):
     if homepage_url.startswith('http') is False:
         homepage_url = 'http://' + homepage_url
     scrape_url(homepage_url)
+    print('List length:', len(shared_list))
 
-# Create a Manager
-with Manager() as manager:
-    # Create a list in shared memory
+if __name__ == '__main__':
+        # Set up the logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+
+    handler = logging.FileHandler('azioni.log')
+    handler.setLevel(logging.INFO)
+
+    formatter = logging.Formatter('PID:  %(process)s - %(asctime)s - %(message)s')
+    handler.setFormatter(formatter)
+
+    logger.addHandler(handler)
+
+    # Read the excel file
+    data = pd.read_excel('input.xlsx')
+    logger.info('The input file was read successfully.')
+
+
+    # Create a shared list to store the results
+    manager = Manager()
     shared_list = manager.list()
 
-    # Create a Pool
-    with Pool() as pool:
-        # Map the function to the data
-                pool.map(process_row, [(index, row, list) for index, row in data.iterrows()])
-    final_list = list(shared_list)
+    # Multiprocessing
+    with ProcessPoolExecutor() as executor:
 
-# Save the output to an excel file
-logger.info('Saving the output to an excel file.')
-output = pd.DataFrame(final_list, columns = ['Webpage', 'Trovata in Home', 'Trovata in link', 'Link' ])
-output.to_excel('output.xlsx')
-logger.info('The output was saved successfully.')
+        # Create a list to hold the Future objects
+        futures = []
+
+        # Submit the function to the executor
+        for args in [(index, row, shared_list) for index, row in data.iterrows()]:
+            future = executor.submit(process_row, args)
+            futures.append(future)
+
+        # Collect the results, enforcing a timeout
+        for future in futures:
+            try:
+                future.result(timeout=10)  # Adjust the timeout as needed
+            except TimeoutError:
+                logger.error('A scraping process timed out.')
+
+    final_list = list(shared_list)
+    # Save the output to an excel file
+    logger.info('Saving the output to an excel file.')
+    output = pd.DataFrame(final_list, columns = ['Webpage', 'Trovata in Home', 'Trovata in link', 'Link' ])
+    output.to_excel('output.xlsx')
+    logger.info('The output was saved successfully.')
