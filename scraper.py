@@ -1,5 +1,6 @@
 import logging
 from multiprocessing import Manager
+from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, TimeoutError
 import os
 from io import BytesIO
@@ -12,9 +13,13 @@ import PyPDF2
 
 # Check the homepage for URLs that are of the same domain
 def is_same_domain(url, domain):
-    if url.startswith('http') and domain in url:
+    if url.startswith('http') and not domain in url:
+        logger.info('The URL is not of the same domain: ' + url)
+        return False
+    if url.startswith('javascript') or url.startswith('mailto'):
+        return False
+    else:
         return True
-    return False
 
 
 # Function to scrape the given URL for the word "blockchain"
@@ -23,7 +28,11 @@ def scrape_url(url):
         response = requests.get(url, timeout=10)
     except requests.exceptions.Timeout as e:
         logger.error('The request timed out for the following link: ' + url)
-        shared_list.append((url, 'Error', '-', '-'))
+        shared_list.append((url, 'Errore', '-', '-'))
+        return e
+    except requests.exceptions.MissingSchema as e:
+        logger.error('The URL is not valid: ' + url)
+        shared_list.append((url, 'Errore', '-', '-'))
         return e
     except requests.exceptions.RequestException as e:
         logger.error('There was an error while scraping the following link: ' + url)
@@ -33,6 +42,10 @@ def scrape_url(url):
     try:
         body = soup.find('body').get_text()
     except AttributeError as e:
+        logger.error('There was an error while scraping the following link: ' + url)
+        shared_list.append((url, 'Errore', '-', '-'))
+        return
+    except Exception as e:
         logger.error('There was an error while scraping the following link: ' + url)
         shared_list.append((url, 'Errore', '-', '-'))
         return
@@ -47,7 +60,8 @@ def scrape_url(url):
 # Function to scrape related links of the same domain
 def scrape_related_links(url, sourceResponse):
     soup = BeautifulSoup(sourceResponse.text, 'html.parser')
-    domain = url.split('//')[1].split('/')[0]
+    domain = urlparse(url).netloc
+    logger.info('Scraping related links of the same domain: ' + domain)
     links = soup.find_all('a')
     for link in links:
         href = link.get('href')
@@ -55,17 +69,25 @@ def scrape_related_links(url, sourceResponse):
             try:
                 response = requests.get(href)
             except requests.exceptions.Timeout as e:
-                logger.error('The request timed out for the following link: ' + href)
+                logger.error('The request timed out for the following PDF: ' + href)
+                shared_list.append((url, 'No', 'Errore', href))
+                return e
+            except requests.exceptions.MissingSchema as e:
+                logger.error('The URL is not valid: ' + url)
                 shared_list.append((url, 'No', 'Errore', href))
                 return e
             except requests.exceptions.RequestException as e:
-                logger.error('There was an error while scraping the following link: ' + href)
+                logger.error('There was an error while scraping the following PDF: ' + href)
                 shared_list.append((url, 'No', 'Errore', href))
                 return e
             logger.info('Scraping the PDF: ' + href)
             pdf_file = BytesIO(response.content)
             scrape_pdf(pdf_file, url, href)
-        if href and is_same_domain(href, domain):
+        if href and not href.startswith('#') and is_same_domain(href, domain):
+            if href.startswith('http') is False:
+                if href.startswith('/') is False:
+                    href = '/' + href
+                href = url + href
             try:
                 response = requests.get(href)
             except requests.exceptions.Timeout as e:
@@ -78,7 +100,16 @@ def scrape_related_links(url, sourceResponse):
                 return e
             else:
                 soup = BeautifulSoup(response.text, 'html.parser')
-                body = soup.find('body').get_text()
+                try:
+                    body = soup.find('body').get_text()
+                except AttributeError as e:
+                    logger.error('There was an error while scraping the following link: ' + url)
+                    shared_list.append((url, 'Errore', '-', '-'))
+                    return
+                except Exception as e:
+                    logger.error('There was an error while scraping the following link: ' + url)
+                    shared_list.append((url, 'Errore', '-', '-'))
+                    return
                 if 'blockchain' in body:
                     logger.info('The word "blockchain" was found in the related link:' + href)
                     shared_list.append((url, 'No', 'Sì', href))
@@ -159,6 +190,8 @@ if __name__ == '__main__':
                 future.result(timeout=10)  # Adjust the timeout as needed
             except TimeoutError:
                 logger.error('A scraping process timed out.')
+            except Exception as e:
+                logger.error('An error occurred in process with PID: ' + str(os.getpid()) + '. Error: ' + str(e))
 
     final_list = list(shared_list)
     # Save the output to an excel file
