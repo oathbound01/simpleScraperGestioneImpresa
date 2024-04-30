@@ -9,6 +9,7 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import PyPDF2
+import time
 
 
 # Check the homepage for URLs that are of the same domain
@@ -156,7 +157,8 @@ if __name__ == '__main__':
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
 
-    handler = logging.FileHandler('azioni.log')
+    log_filename = 'azioni_' + time.strftime('%Y%m%d%H%M%S') + '.log'
+    handler = logging.FileHandler(log_filename)
     handler.setLevel(logging.INFO)
 
     formatter = logging.Formatter('PID:  %(process)s - %(asctime)s - %(message)s')
@@ -199,3 +201,4 @@ if __name__ == '__main__':
     output = pd.DataFrame(final_list, columns = ['Webpage', 'Trovata in Home', 'Trovata in link', 'Link' ])
     output.to_excel('output.xlsx')
     logger.info('The output was saved successfully.')
+    
