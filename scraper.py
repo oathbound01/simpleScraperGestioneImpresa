@@ -73,6 +73,10 @@ def scrape_related_links(url, sourceResponse):
     for link in links:
         href = link.get('href')
         if href and href.endswith('.pdf'):
+            if href.startswith('http') is False:
+                if href.startswith('/') is False:
+                    href = '/' + href
+                href = url + href
             try:
                 response = requests.get(href)
             except requests.exceptions.Timeout as e:
