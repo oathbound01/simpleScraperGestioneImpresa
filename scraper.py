@@ -18,6 +18,7 @@ def is_same_domain(url, domain):
         logger.info('The URL is not of the same domain: ' + url)
         return False
     if url.startswith('javascript') or url.startswith('mailto'):
+        logger.info('The URL is not of the same domain: ' + url)
         return False
     else:
         return True
@@ -54,7 +55,8 @@ def scrape_url(url):
         logger.error('There was an error while scraping the following link: ' + url)
         shared_list.append((url, 'Errore', '-', '-'))
         return
-    if 'blockchain' in body or 'Blockchain' in body:
+    if ('blockchain' in body or 'Blockchain' in body or 'BLOCKCHAIN' in body or 'BlockChain' in body 
+        or 'block chain' in body or 'Block Chain' in body or 'BLOCK CHAIN' in body or 'Block Chain' in body):
         logger.info('The word "blockchain" was found in the homepage:' + url)
         shared_list.append((url, 'Sì', '-', '-'))
         return True
@@ -68,8 +70,8 @@ def scrape_related_links(url, sourceResponse):
     domain = urlparse(url).netloc
     if domain.startswith('www.'):
         domain = domain.replace('www.', '')
-    logger.info('Scraping related links of the same domain: ' + domain)
     links = soup.find_all('a')
+    logger.info('Scraping' + links.len() + 'related links of the same domain: ' + domain)
     for link in links:
         href = link.get('href')
         if href and href.endswith('.pdf'):
@@ -97,7 +99,11 @@ def scrape_related_links(url, sourceResponse):
                 return e
             logger.info('Scraping the PDF: ' + href)
             pdf_file = BytesIO(response.content)
-            scrape_pdf(pdf_file, url, href)
+            PDF_result = scrape_pdf(pdf_file, url, href)
+            if PDF_result is Exception:
+                return
+            if PDF_result is True:
+                return
         if href and not href.startswith('#') and is_same_domain(href, domain):
             if href.startswith('http') is False:
                 if href.startswith('/') is False:
@@ -129,7 +135,8 @@ def scrape_related_links(url, sourceResponse):
                     logger.error('There was an error while scraping the following link: ' + url)
                     shared_list.append((url, 'Errore', '-', '-'))
                     return
-                if 'blockchain' in body or 'Blockchain' in body:
+                if ('blockchain' in body or 'Blockchain' in body or 'BLOCKCHAIN' in body or 'BlockChain' in body 
+                    or 'block chain' in body or 'Block Chain' in body or 'BLOCK CHAIN' in body or 'Block Chain' in body):
                     logger.info('The word "blockchain" was found in the related link:' + href)
                     shared_list.append((url, 'No', 'Sì', href))
                     return True
@@ -147,7 +154,8 @@ def scrape_pdf(pdf, homepage_url, url):
         text = ''
         for page in pdf.pages:
             text += page.extract_text()
-        if 'blockchain' in text or 'Blockchain' in text:
+        if ('blockchain' in text or 'Blockchain' in text or 'BLOCKCHAIN' in text or 'BlockChain' in text 
+            or 'block chain' in text or 'Block Chain' in text or 'BLOCK CHAIN' in text or 'Block Chain' in text):
             logger.info('The word "blockchain" was found in the related PDF:' + url)
             shared_list.append((homepage_url, 'No', 'Sì', url))
             return
